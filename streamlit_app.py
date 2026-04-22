@@ -8,7 +8,7 @@ st.set_page_config(page_title="Manager Biura Projektowego", layout="wide")
 st.title("🏗️ System Zarządzania Projektami")
 
 # Połączenie z Google Sheets
-url = "https://docs.google.com/spreadsheets/d/TWÓJ_KOD_Z_LINKU/edit?usp=sharing"
+url = "https://docs.google.com/spreadsheets/d/1G9RAEbTst4RoD1_Pq1Nm1Q5n1qG6_woDcQv2cnh3100/edit?usp=sharing"
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # Pobieranie danych
