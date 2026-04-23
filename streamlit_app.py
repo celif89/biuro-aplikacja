@@ -97,8 +97,11 @@ if check_password():
                 df.at[idx, 'Inwestor'] = e_inwestor
                 df.at[idx, 'Etap'] = e_etap
                 df.at[idx, 'Pracownik'] = e_pracownik
-                # Uwaga: Aby zapisać notatki, musisz mieć kolumnę "Notatki" w Arkuszu Google!
+                
+                # POPRAWKA BŁĘDU TYPEERROR:
                 if 'Notatki' in df.columns:
+                    # Zamieniamy całą kolumnę na typ tekstowy (Object), żeby przyjmowała litery i znaki
+                    df['Notatki'] = df['Notatki'].astype(str)
                     df.at[idx, 'Notatki'] = e_notatki
                 
                 conn.update(spreadsheet=url, data=df)
