@@ -6,14 +6,30 @@ import datetime
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Manager Biura PRO", layout="wide")
 
+st.markdown("""
+    <style>
+    /* Zmniejszenie odstępów między elementami */
+    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    .stButton>button { width: 100%; border-radius: 5px; }
+    /* Optymalizacja tabeli na mobile */
+    [data-testid="column"] { min-width: 100px !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
 # --- POŁĄCZENIE Z BAZĄ ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def pobierz_dane(sheet_name):
+@st.cache_data(ttl=600) # Dane zostają w pamięci serwera na 10 minut
+def pobierz_dane_cached(sheet_name):
     try:
-        return conn.read(worksheet=sheet_name, ttl=0)
+        # Używamy cache, żeby nie pytać Google przy każdym kliknięciu
+        return conn.read(worksheet=sheet_name, ttl=0) 
     except:
         return pd.DataFrame()
+
+# Funkcja do czyszczenia cache po zapisie (żeby od razu widzieć zmiany)
+def wyczysc_cache():
+    st.cache_data.clear()
 
 def zapisz_log(uzytkownik, projekt, akcja):
     logs_df = pobierz_dane("Logi")
@@ -130,6 +146,7 @@ if st.session_state.selected_project is not None:
             zapisz_log(st.session_state.user_name, row['Nazwa'], "Edycja szczegółów")
             st.success("Zapisano!")
             st.session_state.selected_project = None
+            wyczysc_cache() # <--- TO JEST KLUCZOWE
             st.rerun()
 
 # --- WIDOK 2: LISTA GŁÓWNA ---
