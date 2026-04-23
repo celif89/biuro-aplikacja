@@ -64,7 +64,7 @@ def check_password():
 
 # --- GŁÓWNA CZĘŚĆ APLIKACJI ---
 if check_password():
-    df = pobierz_dane("Sheet1") # Twoja główna zakładka z projektami
+    df = pobierz_dane("Arkusz1") # Twoja główna zakładka z projektami
     
     if "selected_project" not in st.session_state:
         st.session_state.selected_project = None
