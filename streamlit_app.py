@@ -16,15 +16,14 @@ st.markdown("""
     
     /* Styl dla tabeli postępów */
     .progress-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-bottom: 10px; }
-    .progress-table th { background: #f8f9fa; text-align: left; padding: 8px; border-bottom: 2px solid #dee2e6; }
-    .progress-table td { padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+    .progress-table td { padding: 8px; border-bottom: 1px solid #eee; }
     
-    /* Styl dla metryki */
-    .metric-box { background-color: #fcfcfc; border: 1px solid #eee; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    /* Styl dla listy zadań */
+    .task-done { text-decoration: line-through; color: #999; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. FUNKCJE BAZODANOWE ---
+# --- 2. POŁĄCZENIE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 @st.cache_data(ttl=600)
@@ -34,155 +33,155 @@ def pobierz_dane(sheet_name):
 
 def odswiez_baze(): st.cache_data.clear()
 
-def zapisz_log(uzytkownik, projekt, akcja):
-    try:
-        logs_df = pobierz_dane("Logi")
-        nowy_log = pd.DataFrame([{"Data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "Uzytkownik": uzytkownik, "Projekt": projekt, "Akcja": akcja}])
-        conn.update(worksheet="Logi", data=pd.concat([logs_df, nowy_log], ignore_index=True))
-    except: pass
-
 # --- 3. LOGOWANIE ---
 if "password_correct" not in st.session_state:
-    st.title("🔐 Logowanie do systemu")
+    st.title("🔐 Logowanie")
     user_name = st.selectbox("Użytkownik", ["Adam", "Ewa"])
-    password = st.text_input("Hasło", type="password")
     if st.button("Zaloguj"):
-        if password == "biuro":
-            st.session_state.update({"user_name": user_name, "password_correct": True, "last_login": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
-            st.rerun()
+        st.session_state.update({"user_name": user_name, "password_correct": True, "last_login": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+        st.rerun()
     st.stop()
 
 # --- 4. GŁÓWNA APLIKACJA ---
 df = pobierz_dane("Projekty")
 if "selected_project" not in st.session_state: st.session_state.selected_project = None
 
-# --- SIDEBAR (MENU LEWE) ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.title("📁 Menu Biura")
-    st.write(f"Zalogowany: **{st.session_state.user_name}**")
-    
-    if st.button("🏠 Lista Główna Projektów", use_container_width=True):
+    st.title("📁 Menu")
+    if st.button("🏠 Lista Główna", use_container_width=True):
         st.session_state.selected_project = None
         st.rerun()
-    
-    if st.button("🔄 Odśwież Dane", use_container_width=True):
+    if st.button("🔄 Odśwież", use_container_width=True):
         odswiez_baze()
         st.rerun()
-    
     st.divider()
-    
-    with st.expander("➕ Dodaj Nowy Projekt"):
+    with st.expander("➕ Nowy Projekt"):
         with st.form("nowy_p"):
             n_nazwa = st.text_input("Nazwa")
             n_inw = st.text_input("Inwestor")
-            if st.form_submit_button("Dodaj do bazy"):
+            if st.form_submit_button("Dodaj"):
                 if n_nazwa:
                     new = pd.DataFrame([{"Nazwa": n_nazwa, "Inwestor": n_inw, "Etap": "Koncepcja", "Ostatnia_Zmiana": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}])
                     conn.update(worksheet="Projekty", data=pd.concat([df, new], ignore_index=True))
-                    zapisz_log(st.session_state.user_name, n_nazwa, "Dodano projekt")
                     odswiez_baze()
                     st.rerun()
 
-    st.divider()
-    if st.button("🚪 Wyloguj"):
-        del st.session_state["password_correct"]
-        st.rerun()
-
-# --- WIDOK SZCZEGÓŁÓW PROJEKTU ---
+# --- WIDOK SZCZEGÓŁÓW ---
 if st.session_state.selected_project is not None:
     idx = st.session_state.selected_project
     row = df.iloc[idx]
-    
     st.title(f"📂 {row['Nazwa']}")
 
-    # LINKI AKCJI
-    c_l1, c_l2 = st.columns(2)
-    with c_l1: 
-        if pd.notnull(row.get('Link_Drive')): st.link_button("🚀 Dokumentacja Drive", str(row['Link_Drive']), use_container_width=True)
-    with c_l2:
-        if pd.notnull(row.get('Link_Mapa')): st.link_button("📍 Mapa / Lokalizacja", str(row['Link_Mapa']), use_container_width=True)
+    tab1, tab2, tab3 = st.tabs(["📋 Metryka i Zadania", "📝 Dziennik", "⚙️ Ustawienia"])
 
-    tab1, tab2, tab3 = st.tabs(["📋 Metryka i Zadania", "📝 Dziennik Postępów", "⚙️ Ustawienia Linków"])
-
-    # --- TAB 1: METRYKA I ZADANIA ---
     with tab1:
-        col_m1, col_m2 = st.columns([1, 1])
+        col_left, col_right = st.columns(2)
         
-        with col_m1:
-            st.subheader("📌 Informacje podstawowe (Umowa)")
-            with st.form("form_metryka"):
-                metryka_text = st.text_area("Dane umowy, zakres, budżet, nr kontaktowy:", value=str(row.get('Metryka', "")) if pd.notnull(row.get('Metryka')) else "", height=200)
+        with col_left:
+            st.subheader("📌 Metryka Projektu")
+            with st.form("metryka_form"):
+                m_text = st.text_area("Szczegóły umowy/zakresu:", value=str(row.get('Metryka', "")) if pd.notnull(row.get('Metryka')) else "", height=300)
                 if st.form_submit_button("Zapisz Metrykę"):
-                    df.at[idx, 'Metryka'] = metryka_text
+                    df.at[idx, 'Metryka'] = m_text
                     conn.update(worksheet="Projekty", data=df)
                     odswiez_baze()
-                    st.success("Metryka zaktualizowana")
+                    st.success("Zapisano!")
 
-        with col_m2:
-            st.subheader("✅ Co należy zrobić (To-Do)")
-            lista_zadan = st.text_area("Wpisz zadania (jedno pod drugim):", value=str(row.get('Lista_Zadań', "")) if pd.notnull(row.get('Lista_Zadań')) else "", height=200)
-            if st.button("Zapisz Listę Zadań"):
-                df.at[idx, 'Lista_Zadań'] = lista_zadan
+        with col_right:
+            st.subheader("✅ Lista Zadań (To-Do)")
+            
+            # Pobieranie i parsowanie zadań z bazy
+            zadania_raw = str(row.get('Lista_Zadań', ""))
+            lista_zadan = []
+            if zadania_raw and zadania_raw != "nan" and zadania_raw != "":
+                # Format w bazie: Zadanie1|0||Zadanie2|1 (0=do zrobienia, 1=zrobione)
+                lista_zadan = [z.split("|") for z in zadania_raw.split("||") if "|" in z]
+
+            # Wyświetlanie checkboxów
+            zmiana_statusu = False
+            nowa_lista_str = []
+            
+            for i, z in enumerate(lista_zadan):
+                text, status = z[0], z[1]
+                # Checkbox
+                checked = st.checkbox(text, value=(status == "1"), key=f"task_{i}")
+                
+                # Jeśli użytkownik kliknął (zmiana statusu)
+                nowy_status = "1" if checked else "0"
+                if nowy_status != status:
+                    zmiana_statusu = True
+                nowa_lista_str.append(f"{text}|{nowy_status}")
+
+            # Zapisywanie zmian statusu (automatyczne po kliknięciu)
+            if zmiana_statusu:
+                df.at[idx, 'Lista_Zadań'] = "||".join(nowa_lista_str)
                 conn.update(worksheet="Projekty", data=df)
                 odswiez_baze()
-                st.toast("Lista zadań zapisana!")
+                st.rerun()
 
-    # --- TAB 2: DZIENNIK POSTĘPÓW ---
+            st.divider()
+            # Dodawanie nowego zadania
+            with st.form("new_task_form", clear_on_submit=True):
+                new_t = st.text_input("Dodaj nowe zadanie:")
+                if st.form_submit_button("➕ Dodaj"):
+                    if new_t:
+                        entry = f"{new_t}|0"
+                        df.at[idx, 'Lista_Zadań'] = entry if not zadania_raw or zadania_raw=="nan" else zadania_raw + "||" + entry
+                        conn.update(worksheet="Projekty", data=df)
+                        odswiez_baze()
+                        st.rerun()
+            
+            if st.button("🗑️ Wyczyść ukończone"):
+                lista_zadan = [f"{z[0]}|{z[1]}" for z in lista_zadan if z[1] == "0"]
+                df.at[idx, 'Lista_Zadań'] = "||".join(lista_zadan)
+                conn.update(worksheet="Projekty", data=df)
+                odswiez_baze()
+                st.rerun()
+
+    # --- TAB 2: DZIENNIK (SKRÓCONY) ---
     with tab2:
-        st.subheader("Dziennik Postępów Robót")
+        st.subheader("Historia działań")
         historia = str(row.get('Notatki', ""))
         if historia and historia != "nan":
-            html_table = '<table class="progress-table"><tr><th>Data</th><th>Pracownik</th><th>Opis prac</th></tr>'
             for wpis in reversed(historia.split("||")):
                 if "|" in wpis:
                     cz = wpis.split("|")
-                    if len(cz) >= 3: html_table += f'<tr><td>{cz[0]}</td><td style="color:#01579b">{cz[1]}</td><td>{cz[2]}</td></tr>'
-            html_table += '</table>'
-            st.markdown(html_table, unsafe_allow_html=True)
+                    st.info(f"**{cz[0]}** - {cz[1]}: {cz[2]}")
         
-        with st.form("nowy_wpis_dziennik"):
-            nowy_postep = st.text_area("Co dziś zrobiono?")
-            if st.form_submit_button("Dodaj wpis do dziennika"):
-                data_dzis = datetime.datetime.now().strftime("%d.%m.%Y")
-                wpis_f = f"{data_dzis}|{st.session_state.user_name}|{nowy_postep}"
-                df.at[idx, 'Notatki'] = wpis_f if not historia or historia=="nan" else historia + "||" + wpis_f
+        with st.form("dziennik_form"):
+            n_wpis = st.text_input("Co zrobiono?")
+            if st.form_submit_button("Dodaj wpis"):
+                d = datetime.datetime.now().strftime("%d.%m.%Y")
+                w = f"{d}|{st.session_state.user_name}|{n_wpis}"
+                df.at[idx, 'Notatki'] = w if not historia or historia=="nan" else historia + "||" + w
                 conn.update(worksheet="Projekty", data=df)
-                zapisz_log(st.session_state.user_name, row['Nazwa'], "Wpis w dzienniku")
                 odswiez_baze()
                 st.rerun()
 
-    # --- TAB 3: USTAWIENIA LINKÓW ---
+    # --- TAB 3: USTAWIENIA ---
     with tab3:
-        with st.form("linki_edit"):
+        with st.form("settings"):
             e_inw = st.text_input("Inwestor", row['Inwestor'])
-            e_prac = st.text_input("Prowadzący", row.get('Pracownik', ""))
-            e_etap = st.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"], index=0)
+            e_etap = st.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"])
             e_drive = st.text_input("Link Drive", row.get('Link_Drive', ""))
-            e_mapa = st.text_input("Link Mapa", row.get('Link_Mapa', ""))
-            if st.form_submit_button("Zapisz parametry"):
-                df.at[idx, 'Inwestor'], df.at[idx, 'Pracownik'], df.at[idx, 'Etap'] = e_inw, e_prac, e_etap
-                df.at[idx, 'Link_Drive'], df.at[idx, 'Link_Mapa'] = e_drive, e_mapa
+            if st.form_submit_button("Zapisz"):
+                df.at[idx, 'Inwestor'], df.at[idx, 'Etap'], df.at[idx, 'Link_Drive'] = e_inw, e_etap, e_drive
                 conn.update(worksheet="Projekty", data=df)
                 odswiez_baze()
                 st.rerun()
 
-# --- WIDOK LISTY GŁÓWNEJ ---
+# --- WIDOK LISTY ---
 else:
-    st.subheader("🏗️ Aktywne Projekty")
-    # ... Nagłówki ...
-    cols_h = st.columns([0.5, 4, 3, 2, 1.5])
-    cols_h[0].caption("Otwórz"); cols_h[1].caption("Nazwa projektu"); cols_h[2].caption("Inwestor"); cols_h[3].caption("Prowadzący"); cols_h[4].caption("Etap")
-    st.divider()
-
+    st.subheader("🏗️ Lista Projektów")
     for i, row in df.iterrows():
         st.markdown('<div class="project-row">', unsafe_allow_html=True)
-        c = st.columns([0.5, 4, 3, 2, 1.5])
+        c = st.columns([0.5, 5, 3, 2])
         with c[0]:
-            if st.button("👁️", key=f"v_{i}"):
+            if st.button("👁️", key=f"list_{i}"):
                 st.session_state.selected_project = i
                 st.rerun()
         c[1].markdown(f"**{row['Nazwa']}**")
-        c[2].markdown(f"<span class='small-text'>{row['Inwestor']}</span>", unsafe_allow_html=True)
-        c[3].markdown(f"<span class='small-text'>{row.get('Pracownik', '-')}</span>", unsafe_allow_html=True)
-        with c[4]: st.markdown(f'<div class="etap-badge">{row["Etap"]}</div>', unsafe_allow_html=True)
+        c[2].write(row['Inwestor'])
+        with c[3]: st.markdown(f'<div class="etap-badge">{row["Etap"]}</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
