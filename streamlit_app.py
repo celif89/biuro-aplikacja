@@ -119,10 +119,12 @@ if st.session_state.selected_project is not None:
         e_notatki = st.text_area("Szczegółowe ustalenia", str(row['Notatki']) if 'Notatki' in row else "")
         
         if st.form_submit_button("💾 Zapisz zmiany"):
+            teraz = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             df.at[idx, 'Inwestor'] = e_inwestor
             df.at[idx, 'Pracownik'] = e_pracownik
             df.at[idx, 'Etap'] = e_etap
             df.at[idx, 'Notatki'] = e_notatki
+            df.at[idx, 'Ostatnia_Zmiana'] = teraz # <--- TO ZAPISUJE CZAS ZMIANY
             
             conn.update(worksheet="Projekty", data=df)
             zapisz_log(st.session_state.user_name, row['Nazwa'], "Edycja szczegółów")
@@ -143,23 +145,37 @@ else:
                 for _, log in nowe.sort_values(by="Data", ascending=False).iterrows():
                     st.info(f"**{log['Uzytkownik']}** -> {log['Projekt']} ({log['Akcja']} - {log['Data']})")
 
-    # TABELA
     if not df.empty:
-        # Nagłówki
-        c1, c2, c3, c4 = st.columns([1, 4, 3, 2])
-        c1.write("**Otwórz**")
-        c2.write("**Nazwa**")
-        c3.write("**Inwestor**")
-        c4.write("**Etap**")
-        st.divider()
+            st.write("---")
+            for i, row in df.iterrows():
+                # Sprawdzamy czy zmiana jest nowa i nie zrobiona przez nas
+                czy_nowe = False
+                if 'Ostatnia_Zmiana' in row and pd.notnull(row['Ostatnia_Zmiana']):
+                    if str(row['Ostatnia_Zmiana']) > st.session_state.last_login:
+                        # Opcjonalnie: nie koloruj, jeśli to TY sam dokonałeś tej zmiany przed chwilą
+                        czy_nowe = True
 
-        for i, row in df.iterrows():
-            col1, col2, col3, col4 = st.columns([1, 4, 3, 2])
-            with col1:
-                if st.button("👁️", key=f"v_{i}"):
-                    st.session_state.selected_project = i
-                    st.rerun()
-            col2.write(row['Nazwa'])
-            col3.write(row['Inwestor'])
-            col4.write(row['Etap'])
-            st.divider()
+                # Kontener z kolorem tła
+                # Jeśli zmiana jest nowa, używamy jasnej zieleni
+                bg_color = "#d4edda" if czy_nowe else "transparent"
+                border_color = "#28a745" if czy_nowe else "#eeeeee"
+                
+                # Renderowanie wiersza wewnątrz ramki z kolorem
+                with st.container():
+                    st.markdown(f"""
+                        <div style="background-color:{bg_color}; border: 1px solid {border_color}; border-radius: 5px; padding: 10px; margin-bottom: 5px;">
+                        """, unsafe_allow_html=True)
+                    
+                    c1, c2, c3, c4 = st.columns([1, 4, 3, 2])
+                    with c1:
+                        if st.button("👁️", key=f"v_{i}"):
+                            st.session_state.selected_project = i
+                            st.rerun()
+                    with c2:
+                        # Jeśli nowe, dodajemy ikonkę gwiazdki
+                        prefix = "🟢 " if czy_nowe else ""
+                        st.write(f"{prefix}**{row['Nazwa']}**")
+                    c3.write(row['Inwestor'])
+                    c4.write(row['Etap'])
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
