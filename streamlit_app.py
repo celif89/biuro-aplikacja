@@ -3,30 +3,31 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import datetime
 
-# --- 1. KONFIGURACJA STRONY I STYLE ---
+# --- 1. KONFIGURACJA I STYLE ---
 st.set_page_config(page_title="Manager Biura PRO", layout="wide")
 
 st.markdown("""
     <style>
-    .block-container { padding-top: 2rem; }
-    .stButton>button { width: 100%; border-radius: 8px; }
+    .block-container { padding-top: 1.5rem; }
+    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
+    /* Stylizacja kart projektów */
     .project-card {
-        border-radius: 10px;
-        padding: 15px;
-        margin-bottom: 10px;
         border: 1px solid #e6e9ef;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 10px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. POŁĄCZENIE I CACHING (PRZYŚPIESZENIE) ---
+# --- 2. POŁĄCZENIE I FUNKCJE POMOCNICZE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-@st.cache_data(ttl=600)  # Dane są pamiętane przez 10 minut
+@st.cache_data(ttl=600)
 def pobierz_dane(sheet_name):
     try:
         return conn.read(worksheet=sheet_name, ttl=0)
-    except Exception:
+    except:
         return pd.DataFrame()
 
 def odswiez_baze():
@@ -37,14 +38,10 @@ def zapisz_log(uzytkownik, projekt, akcja):
         logs_df = pobierz_dane("Logi")
         nowy_log = pd.DataFrame([{
             "Data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Uzytkownik": uzytkownik,
-            "Projekt": projekt,
-            "Akcja": akcja
+            "Uzytkownik": uzytkownik, "Projekt": projekt, "Akcja": akcja
         }])
-        updated_logs = pd.concat([logs_df, nowy_log], ignore_index=True)
-        conn.update(worksheet="Logi", data=updated_logs)
-    except:
-        pass
+        conn.update(worksheet="Logi", data=pd.concat([logs_df, nowy_log], ignore_index=True))
+    except: pass
 
 def aktualizuj_czas_logowania(uzytkownik):
     users_df = pobierz_dane("Uzytkownicy")
@@ -52,71 +49,49 @@ def aktualizuj_czas_logowania(uzytkownik):
     if not users_df.empty and uzytkownik in users_df['Uzytkownik'].values:
         users_df.loc[users_df['Uzytkownik'] == uzytkownik, 'OstatnieLogowanie'] = teraz
     else:
-        new_user = pd.DataFrame([{"Uzytkownik": uzytkownik, "OstatnieLogowanie": teraz}])
-        users_df = pd.concat([users_df, new_user], ignore_index=True)
+        users_df = pd.concat([users_df, pd.DataFrame([{"Uzytkownik": uzytkownik, "OstatnieLogowanie": teraz}])], ignore_index=True)
     conn.update(worksheet="Uzytkownicy", data=users_df)
     odswiez_baze()
 
-# --- 3. SYSTEM LOGOWANIA ---
+# --- 3. LOGOWANIE ---
 if "password_correct" not in st.session_state:
-    st.title("🔐 Logowanie")
-    uzytkownicy = ["Adam", "Ewa"]
-    user_name = st.selectbox("Wybierz użytkownika", uzytkownicy)
+    st.title("🔐 System Zarządzania Biurem")
+    user_name = st.selectbox("Wybierz użytkownika", ["Adam", "Ewa"])
     password = st.text_input("Hasło", type="password")
-    
     if st.button("Zaloguj"):
         if password == "biuro":
-            users_df = pobierz_dane("Uzytkownicy")
-            last_time = "2000-01-01 00:00:00"
-            if not users_df.empty and user_name in users_df['Uzytkownik'].values:
-                last_time = users_df.loc[users_df['Uzytkownik'] == user_name, 'OstatnieLogowanie'].values[0]
-            
-            st.session_state["last_login"] = last_time
-            st.session_state["user_name"] = user_name
-            st.session_state["password_correct"] = True
+            u_df = pobierz_dane("Uzytkownicy")
+            last = u_df.loc[u_df['Uzytkownik'] == user_name, 'OstatnieLogowanie'].values[0] if not u_df.empty and user_name in u_df['Uzytkownik'].values else "2000-01-01 00:00:00"
+            st.session_state.update({"last_login": last, "user_name": user_name, "password_correct": True})
             aktualizuj_czas_logowania(user_name)
             st.rerun()
-        else:
-            st.error("Błędne hasło")
     st.stop()
 
-# --- 4. GŁÓWNA LOGIKA APLIKACJI ---
-# Zmień "Projekty" na nazwę swojej zakładki, jeśli jest inna!
+# --- 4. GŁÓWNA APLIKACJA ---
 df = pobierz_dane("Projekty")
+if "selected_project" not in st.session_state: st.session_state.selected_project = None
 
-if "selected_project" not in st.session_state:
-    st.session_state.selected_project = None
-
-# PANEL BOCZNY
+# SIDEBAR
 with st.sidebar:
     st.header(f"👤 {st.session_state.user_name}")
-    if st.button("🏠 Powrót do listy"):
+    if st.button("🏠 Powrót do listy głównej"):
         st.session_state.selected_project = None
         st.rerun()
     if st.button("🔄 Odśwież dane"):
         odswiez_baze()
         st.rerun()
-    
     st.divider()
-    with st.form("nowy_proj"):
-        st.subheader("➕ Nowy Projekt")
+    with st.form("nowy"):
+        st.subheader("➕ Szybkie dodawanie")
         n_nazwa = st.text_input("Nazwa projektu")
         n_inw = st.text_input("Inwestor")
-        n_etap = st.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"])
-        if st.form_submit_button("Dodaj"):
+        if st.form_submit_button("Dodaj projekt"):
             if n_nazwa:
-                new_row = pd.DataFrame([{
-                    "Nazwa": n_nazwa, "Inwestor": n_inw, "Etap": n_etap, 
-                    "Termin": str(datetime.date.today()), "Pracownik": "", 
-                    "Notatki": "", "Ostatnia_Zmiana": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }])
-                df_up = pd.concat([df, new_row], ignore_index=True)
-                conn.update(worksheet="Projekty", data=df_up)
-                zapisz_log(st.session_state.user_name, n_nazwa, "Dodano projekt")
+                new = pd.DataFrame([{"Nazwa": n_nazwa, "Inwestor": n_inw, "Etap": "Koncepcja", "Ostatnia_Zmiana": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}])
+                conn.update(worksheet="Projekty", data=pd.concat([df, new], ignore_index=True))
+                zapisz_log(st.session_state.user_name, n_nazwa, "Nowy projekt")
                 odswiez_baze()
-                st.success("Dodano!")
                 st.rerun()
-
     if st.button("🚪 Wyloguj"):
         del st.session_state["password_correct"]
         st.rerun()
@@ -125,83 +100,81 @@ with st.sidebar:
 if st.session_state.selected_project is not None:
     idx = st.session_state.selected_project
     row = df.iloc[idx]
-    
-    st.title(f"📂 {row['Nazwa']}")
-    
-    with st.form("edycja"):
-        c1, c2 = st.columns(2)
-        with c1:
+    st.title(f"📂 Projekt: {row['Nazwa']}")
+
+    # SZYBKIE LINKI (Zawsze na górze szczegółów)
+    c1, c2 = st.columns(2)
+    with c1:
+        link_d = row.get('Link_Drive', "")
+        if pd.notnull(link_d) and str(link_d).startswith("http"):
+            st.link_button("📂 Otwórz Dokumentację (Drive)", str(link_d), type="primary")
+        else:
+            st.info("Brak podpiętego folderu Drive.")
+    with c2:
+        link_m = row.get('Link_Mapa', "")
+        if pd.notnull(link_m) and str(link_m).startswith("http"):
+            st.link_button("📍 Zobacz lokalizację (Maps)", str(link_m))
+        else:
+            st.info("Brak podpiętej mapy.")
+
+    st.divider()
+
+    with st.form("edycja_full"):
+        col1, col2 = st.columns(2)
+        with col1:
+            e_nazwa = st.text_input("Nazwa", row['Nazwa'])
             e_inw = st.text_input("Inwestor", row['Inwestor'])
-            e_prac = st.text_input("Pracownik", row['Pracownik'])
-        with c2:
-            e_etap = st.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"], 
-                                 index=["Koncepcja", "PNB", "Wykonawczy", "Nadzór"].index(row['Etap']) if row['Etap'] in ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"] else 0)
+            e_drive = st.text_input("Link Google Drive (Folder)", row.get('Link_Drive', ""))
+        with col2:
+            e_prac = st.text_input("Pracownik", row.get('Pracownik', ""))
+            e_etap = st.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"], index=0)
+            e_mapa = st.text_input("Link Google Maps (Lokalizacja)", row.get('Link_Mapa', ""))
         
-        e_notatki = st.text_area("Szczegóły / Notatki", str(row['Notatki']) if pd.notnull(row['Notatki']) else "", height=250)
+        e_notatki = st.text_area("Szczegółowe notatki projektowe", str(row.get('Notatki', "")), height=200)
         
-        if st.form_submit_button("💾 Zapisz i wróć"):
-            teraz = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            df.at[idx, 'Inwestor'] = e_inw
-            df.at[idx, 'Pracownik'] = e_prac
-            df.at[idx, 'Etap'] = e_etap
+        if st.form_submit_button("💾 Zapisz wszystkie zmiany"):
+            df.at[idx, 'Nazwa'], df.at[idx, 'Inwestor'] = e_nazwa, e_inw
+            df.at[idx, 'Link_Drive'], df.at[idx, 'Link_Mapa'] = e_drive, e_mapa
+            df.at[idx, 'Pracownik'], df.at[idx, 'Etap'] = e_prac, e_etap
             df.at[idx, 'Notatki'] = e_notatki
-            df.at[idx, 'Ostatnia_Zmiana'] = teraz
+            df.at[idx, 'Ostatnia_Zmiana'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             conn.update(worksheet="Projekty", data=df)
-            zapisz_log(st.session_state.user_name, row['Nazwa'], "Edycja danych")
+            zapisz_log(st.session_state.user_name, e_nazwa, "Aktualizacja danych i linków")
             odswiez_baze()
             st.session_state.selected_project = None
             st.rerun()
 
-# --- WIDOK LISTY (POPRAWIONY) ---
+# --- WIDOK LISTY ---
 else:
-    st.title("🏗️ System Biura Projektowego")
+    st.title("🏗️ Zarządzanie Projektami")
     
-    # Powiadomienia o nowościach
+    # Powiadomienia
     logs_df = pobierz_dane("Logi")
     if not logs_df.empty:
-        nowe = logs_df[(logs_df['Data'] > st.session_state.last_login) & (logs_df['Uzytkownik'] != st.session_state.user_name)]
-        if not nowe.empty:
-            st.success(f"🔔 Masz {len(nowe)} nowe zmiany od ostatniej wizyty! Sprawdź projekty oznaczone 🟢")
+        n_l = logs_df[(logs_df['Data'] > st.session_state.last_login) & (logs_df['Uzytkownik'] != st.session_state.user_name)]
+        if not n_l.empty:
+            st.success(f"🔔 Masz {len(n_l)} nowych zmian od współpracowników!")
 
     st.divider()
-
-    # Nagłówki tabeli (ukryte na małych ekranach automatycznie przez Streamlit)
-    h_col1, h_col2, h_col3, h_col4 = st.columns([1, 4, 3, 2])
-    h_col1.write("**Otwórz**")
-    h_col2.write("**Nazwa Projektu**")
-    h_col3.write("**Inwestor**")
-    h_col4.write("**Etap**")
-    st.divider()
-
     if not df.empty:
         for i, row in df.iterrows():
-            # Sprawdzanie nowości
-            czy_nowe = False
-            if 'Ostatnia_Zmiana' in row and pd.notnull(row['Ostatnia_Zmiana']):
-                if str(row['Ostatnia_Zmiana']) > st.session_state.last_login:
-                    czy_nowe = True
+            czy_nowe = str(row.get('Ostatnia_Zmiana', "")) > st.session_state.last_login
+            bg = "#f0fff4" if czy_nowe else "white"
+            brdr = "#c6f6d5" if czy_nowe else "#e2e8f0"
             
-            # Tworzymy wiersz
-            cols = st.columns([1, 4, 3, 2])
-            
-            with cols[0]:
-                if st.button("👁️", key=f"btn_{i}"):
+            st.markdown(f'<div style="background-color:{bg}; border: 1px solid {brdr}; padding:15px; border-radius:10px; margin-bottom:10px;">', unsafe_allow_html=True)
+            c1, c2, c3, c4 = st.columns([1, 4, 3, 2])
+            with c1:
+                if st.button("👁️", key=f"v_{i}"):
                     st.session_state.selected_project = i
                     st.rerun()
             
-            with cols[1]:
-                # Dodajemy zieloną kropkę jeśli projekt jest nowy
-                oznaczenie = "🟢 " if czy_nowe else ""
-                st.markdown(f"{oznaczenie}**{row['Nazwa']}**")
+            # Ikony informacyjne obok nazwy
+            drive_icon = "📁 " if pd.notnull(row.get('Link_Drive')) and str(row.get('Link_Drive')).startswith("http") else ""
+            map_icon = "📍 " if pd.notnull(row.get('Link_Mapa')) and str(row.get('Link_Mapa')).startswith("http") else ""
             
-            with cols[2]:
-                st.write(row['Inwestor'])
-                
-            with cols[3]:
-                # Kolorujemy tekst etapu dla lepszej widoczności
-                st.info(row['Etap'])
-            
-            st.write("---") # Linia oddzielająca projekty
-    else:
-        st.info("Baza jest pusta.")
+            c2.markdown(f"{'🟢 ' if czy_nowe else ''}**{row['Nazwa']}** <br> <small>{drive_icon}{map_icon}</small>", unsafe_allow_html=True)
+            c3.write(row['Inwestor'])
+            c4.info(row['Etap'])
+            st.markdown('</div>', unsafe_allow_html=True)
