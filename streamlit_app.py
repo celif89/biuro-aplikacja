@@ -83,28 +83,34 @@ if check_password():
                 e_nazwa = st.text_input("Nazwa", project_data['Nazwa'])
                 e_inwestor = st.text_input("Inwestor", project_data['Inwestor'])
             with col2:
-                # Szukamy indeksu etapu, żeby selectbox był ustawiony na obecny
                 etapy = ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"]
                 idx_etap = etapy.index(project_data['Etap']) if project_data['Etap'] in etapy else 0
                 e_etap = st.selectbox("Etap", etapy, index=idx_etap)
                 e_pracownik = st.text_input("Osoba", project_data['Pracownik'])
             
             st.subheader("📝 Szczegółowe notatki")
-            e_notatki = st.text_area("Wpisz ustalenia, numery działek, telefony itp.")
+            
+            # POBIERANIE NOTATEK Z BAZY DO POLA TEKSTOWEGO
+            obecne_notatki = ""
+            if 'Notatki' in project_data:
+                obecne_notatki = str(project_data['Notatki']) if pd.notnull(project_data['Notatki']) else ""
+            
+            e_notatki = st.text_area("Wpisz ustalenia, numery działek, telefony itp.", value=obecne_notatki, height=200)
 
             if st.form_submit_button("💾 Zapisz zmiany i wróć"):
+                # Aktualizacja danych w lokalnym DataFrame
                 df.at[idx, 'Nazwa'] = e_nazwa
                 df.at[idx, 'Inwestor'] = e_inwestor
                 df.at[idx, 'Etap'] = e_etap
                 df.at[idx, 'Pracownik'] = e_pracownik
                 
-                # POPRAWKA BŁĘDU TYPEERROR:
                 if 'Notatki' in df.columns:
-                    # Zamieniamy całą kolumnę na typ tekstowy (Object), żeby przyjmowała litery i znaki
                     df['Notatki'] = df['Notatki'].astype(str)
                     df.at[idx, 'Notatki'] = e_notatki
                 
+                # Wysłanie do Google Sheets
                 conn.update(spreadsheet=url, data=df)
+                st.success("Zapisano!")
                 st.session_state.selected_project = None
                 st.rerun()
 
