@@ -93,6 +93,9 @@ with st.sidebar:
     if st.button("🏠 Powrót do listy"):
         st.session_state.selected_project = None
         st.rerun()
+    if st.button("🔄 Odśwież dane"):
+    odswiez_baze()
+    st.rerun()
     
     st.divider()
     with st.form("nowy_proj"):
@@ -150,40 +153,55 @@ if st.session_state.selected_project is not None:
             st.session_state.selected_project = None
             st.rerun()
 
-# --- WIDOK LISTY ---
+# --- WIDOK LISTY (POPRAWIONY) ---
 else:
     st.title("🏗️ System Biura Projektowego")
     
-    # Powiadomienia
+    # Powiadomienia o nowościach
     logs_df = pobierz_dane("Logi")
     if not logs_df.empty:
         nowe = logs_df[(logs_df['Data'] > st.session_state.last_login) & (logs_df['Uzytkownik'] != st.session_state.user_name)]
         if not nowe.empty:
-            with st.expander(f"🔔 Nowe zmiany ({len(nowe)})", expanded=True):
-                for _, log in nowe.sort_values(by="Data", ascending=False).iterrows():
-                    st.info(f"**{log['Uzytkownik']}** edytował **{log['Projekt']}** ({log['Data']})")
+            st.success(f"🔔 Masz {len(nowe)} nowe zmiany od ostatniej wizyty! Sprawdź projekty oznaczone 🟢")
 
-    # Lista projektów
+    st.divider()
+
+    # Nagłówki tabeli (ukryte na małych ekranach automatycznie przez Streamlit)
+    h_col1, h_col2, h_col3, h_col4 = st.columns([1, 4, 3, 2])
+    h_col1.write("**Otwórz**")
+    h_col2.write("**Nazwa Projektu**")
+    h_col3.write("**Inwestor**")
+    h_col4.write("**Etap**")
+    st.divider()
+
     if not df.empty:
         for i, row in df.iterrows():
-            # Logika kolorowania (zielony jeśli nowe)
+            # Sprawdzanie nowości
             czy_nowe = False
             if 'Ostatnia_Zmiana' in row and pd.notnull(row['Ostatnia_Zmiana']):
-                if str(row['Ostatnia_Zmiana']) > st.session_state.last_login and row.get('Uzytkownik_Zmiany') != st.session_state.user_name:
+                if str(row['Ostatnia_Zmiana']) > st.session_state.last_login:
                     czy_nowe = True
             
-            bg_color = "#d4edda" if czy_nowe else "white"
-            border_color = "#28a745" if czy_nowe else "#e6e9ef"
-            
-            st.markdown(f'<div style="background-color:{bg_color}; border: 2px solid {border_color}; padding:15px; border-radius:10px; margin-bottom:10px;">', unsafe_allow_html=True)
+            # Tworzymy wiersz
             cols = st.columns([1, 4, 3, 2])
+            
             with cols[0]:
                 if st.button("👁️", key=f"btn_{i}"):
                     st.session_state.selected_project = i
                     st.rerun()
-            cols[1].markdown(f"**{row['Nazwa']}**")
-            cols[2].write(row['Inwestor'])
-            cols[3].write(f"Etap: {row['Etap']}")
-            st.markdown('</div>', unsafe_allow_html=True)
+            
+            with cols[1]:
+                # Dodajemy zieloną kropkę jeśli projekt jest nowy
+                oznaczenie = "🟢 " if czy_nowe else ""
+                st.markdown(f"{oznaczenie}**{row['Nazwa']}**")
+            
+            with cols[2]:
+                st.write(row['Inwestor'])
+                
+            with cols[3]:
+                # Kolorujemy tekst etapu dla lepszej widoczności
+                st.info(row['Etap'])
+            
+            st.write("---") # Linia oddzielająca projekty
     else:
-        st.info("Brak projektów. Dodaj pierwszy w panelu bocznym!")
+        st.info("Baza jest pusta.")
