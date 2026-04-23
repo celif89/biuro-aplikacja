@@ -94,8 +94,8 @@ with st.sidebar:
         st.session_state.selected_project = None
         st.rerun()
     if st.button("🔄 Odśwież dane"):
-    odswiez_baze()
-    st.rerun()
+        odswiez_baze()
+        st.rerun()
     
     st.divider()
     with st.form("nowy_proj"):
