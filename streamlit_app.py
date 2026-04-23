@@ -3,27 +3,54 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import datetime
 
-# --- 1. KONFIGURACJA I STYLE ---
+# --- 1. KONFIGURACJA, STYLE I CSS ---
 st.set_page_config(page_title="Manager Biura PRO", layout="wide")
 
 st.markdown("""
     <style>
-    .block-container { padding-top: 1.5rem; }
-    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
-    .project-card {
-        border: 1px solid #e6e9ef;
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 10px;
+    /* Maksymalne wykorzystanie szerokości */
+    .block-container { padding-top: 1rem; padding-bottom: 0rem; max-width: 98%; }
+    
+    /* Kompaktowe wiersze tabeli */
+    .project-row {
+        border-bottom: 1px solid #f0f2f6;
+        padding: 5px 10px;
+        margin-bottom: 0px;
+        display: flex;
+        align-items: center;
     }
-    iframe {
-        border-radius: 10px;
-        border: 1px solid #ddd;
+    .project-row:hover { background-color: #f8f9fa; }
+    
+    /* Odchudzenie przycisków */
+    .stButton>button {
+        padding: 2px 5px !important;
+        height: 26px !important;
+        font-size: 14px !important;
+        line-height: 1 !important;
     }
+
+    /* Mniejsza czcionka dla danych pomocniczych */
+    .small-text { font-size: 0.85rem; color: #555; }
+    .mini-icons { font-size: 0.9rem; margin-left: 5px; }
+    
+    /* Styl badge dla etapu */
+    .etap-badge {
+        font-size: 0.75rem; 
+        background: #e1f5fe; 
+        color: #01579b; 
+        padding: 2px 8px; 
+        border-radius: 12px; 
+        text-align: center;
+        font-weight: bold;
+    }
+    
+    /* Redukcja odstępów Streamlit */
+    div[data-testid="stVerticalBlock"] > div { gap: 0.2rem !important; }
+    hr { margin: 0.5rem 0 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. POŁĄCZENIE I FUNKCJE POMOCNICZE ---
+# --- 2. POŁĄCZENIE I CACHING ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 @st.cache_data(ttl=600)
@@ -56,7 +83,7 @@ def aktualizuj_czas_logowania(uzytkownik):
     conn.update(worksheet="Uzytkownicy", data=users_df)
     odswiez_baze()
 
-# --- 3. LOGOWANIE ---
+# --- 3. SYSTEM LOGOWANIA ---
 if "password_correct" not in st.session_state:
     st.title("🔐 System Zarządzania Biurem")
     user_name = st.selectbox("Wybierz użytkownika", ["Adam", "Ewa"])
@@ -68,33 +95,35 @@ if "password_correct" not in st.session_state:
             st.session_state.update({"last_login": last, "user_name": user_name, "password_correct": True})
             aktualizuj_czas_logowania(user_name)
             st.rerun()
+        else:
+            st.error("Błędne hasło")
     st.stop()
 
 # --- 4. GŁÓWNA APLIKACJA ---
 df = pobierz_dane("Projekty")
 if "selected_project" not in st.session_state: st.session_state.selected_project = None
 
-# SIDEBAR
+# SIDEBAR (KOMPAKTOWY)
 with st.sidebar:
-    st.header(f"👤 {st.session_state.user_name}")
-    if st.button("🏠 Powrót do listy głównej"):
+    st.write(f"Zalogowany: **{st.session_state.user_name}**")
+    if st.button("🏠 Lista Główna"):
         st.session_state.selected_project = None
         st.rerun()
-    if st.button("🔄 Odśwież dane"):
+    if st.button("🔄 Odśwież"):
         odswiez_baze()
         st.rerun()
     st.divider()
-    with st.form("nowy"):
-        st.subheader("➕ Szybkie dodawanie")
-        n_nazwa = st.text_input("Nazwa projektu")
-        n_inw = st.text_input("Inwestor")
-        if st.form_submit_button("Dodaj projekt"):
-            if n_nazwa:
-                new = pd.DataFrame([{"Nazwa": n_nazwa, "Inwestor": n_inw, "Etap": "Koncepcja", "Ostatnia_Zmiana": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}])
-                conn.update(worksheet="Projekty", data=pd.concat([df, new], ignore_index=True))
-                zapisz_log(st.session_state.user_name, n_nazwa, "Nowy projekt")
-                odswiez_baze()
-                st.rerun()
+    with st.expander("➕ Nowy Projekt"):
+        with st.form("nowy"):
+            n_nazwa = st.text_input("Nazwa")
+            n_inw = st.text_input("Inwestor")
+            if st.form_submit_button("Dodaj"):
+                if n_nazwa:
+                    new = pd.DataFrame([{"Nazwa": n_nazwa, "Inwestor": n_inw, "Etap": "Koncepcja", "Ostatnia_Zmiana": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}])
+                    conn.update(worksheet="Projekty", data=pd.concat([df, new], ignore_index=True))
+                    zapisz_log(st.session_state.user_name, n_nazwa, "Nowy projekt")
+                    odswiez_baze()
+                    st.rerun()
     if st.button("🚪 Wyloguj"):
         del st.session_state["password_correct"]
         st.rerun()
@@ -103,27 +132,24 @@ with st.sidebar:
 if st.session_state.selected_project is not None:
     idx = st.session_state.selected_project
     row = df.iloc[idx]
-    st.title(f"📂 Projekt: {row['Nazwa']}")
+    st.header(f"📂 {row['Nazwa']}")
 
-    # SZYBKIE LINKI I PODGLĄD
     c1, c2 = st.columns(2)
     link_d = row.get('Link_Drive', "")
     link_m = row.get('Link_Mapa', "")
 
     with c1:
         if pd.notnull(link_d) and str(link_d).startswith("http"):
-            st.link_button("🚀 Otwórz pełny Drive", str(link_d), type="primary")
-        else:
-            st.info("Brak linku do Drive.")
+            st.link_button("🚀 Pełny Google Drive", str(link_d), type="primary")
+        else: st.info("Brak linku Drive")
     with c2:
         if pd.notnull(link_m) and str(link_m).startswith("http"):
-            st.link_button("📍 Nawiguj do celu", str(link_m))
-        else:
-            st.info("Brak linku do Mapy.")
+            st.link_button("📍 Google Maps", str(link_m))
+        else: st.info("Brak linku Mapy")
 
-    # --- NOWA SEKCJA: BEZPOŚREDNI PODGLĄD PLIKÓW ---
+    # PODGLĄD DRIVE
     if pd.notnull(link_d) and "drive.google.com" in str(link_d):
-        with st.expander("🔍 PODGLĄD PLIKÓW I DOKUMENTACJI", expanded=True):
+        with st.expander("🔍 Podgląd dokumentacji", expanded=True):
             try:
                 url_str = str(link_d)
                 if "/folders/" in url_str:
@@ -132,75 +158,78 @@ if st.session_state.selected_project is not None:
                     st.components.v1.iframe(embed_url, height=500, scrolling=True)
                 elif "/file/d/" in url_str:
                     f_id = url_str.split("/file/d/")[1].split("/")[0]
-                    embed_url = f"https://drive.google.com/file/d/{f_id}/preview"
-                    st.components.v1.iframe(embed_url, height=500)
-                else:
-                    st.write("Podgląd dostępny tylko dla folderów i plików PDF/Docs.")
-            except:
-                st.warning("Nie udało się załadować podglądu. Upewnij się, że link jest poprawny.")
-
-    st.divider()
+                    st.components.v1.iframe(f"https://drive.google.com/file/d/{f_id}/preview", height=500)
+            except: st.error("Błąd ładowania podglądu")
 
     with st.form("edycja_full"):
         col1, col2 = st.columns(2)
         with col1:
-            e_nazwa = st.text_input("Nazwa projektu", row['Nazwa'])
+            e_nazwa = st.text_input("Nazwa", row['Nazwa'])
             e_inw = st.text_input("Inwestor", row['Inwestor'])
-            e_drive = st.text_input("Link Google Drive (Folder)", row.get('Link_Drive', ""))
+            e_drive = st.text_input("Link Drive", row.get('Link_Drive', ""))
         with col2:
-            e_prac = st.text_input("Osoba prowadząca", row.get('Pracownik', ""))
-            e_etap = st.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"], 
-                                 index=["Koncepcja", "PNB", "Wykonawczy", "Nadzór"].index(row['Etap']) if row['Etap'] in ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"] else 0)
-            e_mapa = st.text_input("Link Google Maps", row.get('Link_Mapa', ""))
+            e_prac = st.text_input("Osoba", row.get('Pracownik', ""))
+            e_etap = st.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"], index=0)
+            e_mapa = st.text_input("Link Mapa", row.get('Link_Mapa', ""))
+        e_notatki = st.text_area("Notatki", str(row.get('Notatki', "")), height=150)
         
-        e_notatki = st.text_area("Notatki i ustalenia", str(row.get('Notatki', "")), height=150)
-        
-        if st.form_submit_button("💾 Zapisz zmiany"):
-            # ZABEZPIECZENIE TYPÓW (Fix dla TypeError)
+        if st.form_submit_button("💾 Zapisz"):
             for col in ['Nazwa', 'Inwestor', 'Link_Drive', 'Link_Mapa', 'Pracownik', 'Etap', 'Notatki']:
                 if col not in df.columns: df[col] = ""
                 df[col] = df[col].astype(str)
-
             df.at[idx, 'Nazwa'], df.at[idx, 'Inwestor'] = e_nazwa, e_inw
             df.at[idx, 'Link_Drive'], df.at[idx, 'Link_Mapa'] = e_drive, e_mapa
             df.at[idx, 'Pracownik'], df.at[idx, 'Etap'] = e_prac, e_etap
             df.at[idx, 'Notatki'] = e_notatki
             df.at[idx, 'Ostatnia_Zmiana'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
             conn.update(worksheet="Projekty", data=df)
-            zapisz_log(st.session_state.user_name, e_nazwa, "Edycja danych i podglądu")
+            zapisz_log(st.session_state.user_name, e_nazwa, "Edycja")
             odswiez_baze()
             st.session_state.selected_project = None
             st.rerun()
 
-# --- WIDOK LISTY ---
+# --- WIDOK LISTY (KOMPAKTOWY) ---
 else:
-    st.title("🏗️ System Zarządzania Biurem")
+    st.subheader("🏗️ Lista Projektów")
     
+    # Toast z powiadomieniem
     logs_df = pobierz_dane("Logi")
     if not logs_df.empty:
         n_l = logs_df[(logs_df['Data'] > st.session_state.last_login) & (logs_df['Uzytkownik'] != st.session_state.user_name)]
-        if not n_l.empty:
-            st.success(f"🔔 Masz {len(n_l)} nowych zmian od współpracowników!")
+        if not n_l.empty: st.toast(f"🔔 {len(n_l)} nowych zmian!", icon="🆕")
 
+    # Nagłówki
+    h = st.columns([0.5, 4, 3, 2, 1.5])
+    h[0].caption("Otwórz")
+    h[1].caption("Nazwa projektu")
+    h[2].caption("Inwestor")
+    h[3].caption("Prowadzący")
+    h[4].caption("Etap")
     st.divider()
+
     if not df.empty:
         for i, row in df.iterrows():
             czy_nowe = str(row.get('Ostatnia_Zmiana', "")) > st.session_state.last_login
-            bg = "#f0fff4" if czy_nowe else "white"
-            brdr = "#c6f6d5" if czy_nowe else "#e2e8f0"
+            bg_color = 'background-color: #f0fff4;' if czy_nowe else ''
             
-            st.markdown(f'<div style="background-color:{bg}; border: 1px solid {brdr}; padding:15px; border-radius:10px; margin-bottom:10px;">', unsafe_allow_html=True)
-            c1, c2, c3, c4 = st.columns([1, 4, 3, 2])
-            with c1:
+            st.markdown(f'<div class="project-row" style="{bg_color}">', unsafe_allow_html=True)
+            cols = st.columns([0.5, 4, 3, 2, 1.5])
+            
+            with cols[0]:
                 if st.button("👁️", key=f"v_{i}"):
                     st.session_state.selected_project = i
                     st.rerun()
             
-            drive_icon = "📁 " if pd.notnull(row.get('Link_Drive')) and str(row.get('Link_Drive')).startswith("http") else ""
-            map_icon = "📍 " if pd.notnull(row.get('Link_Mapa')) and str(row.get('Link_Mapa')).startswith("http") else ""
+            with cols[1]:
+                d_ico = "📁" if pd.notnull(row.get('Link_Drive')) and "http" in str(row.get('Link_Drive')) else ""
+                m_ico = "📍" if pd.notnull(row.get('Link_Mapa')) and "http" in str(row.get('Link_Mapa')) else ""
+                tag = "🟢 " if czy_nowe else ""
+                st.markdown(f"{tag}**{row['Nazwa']}** <span class='mini-icons'>{d_ico}{m_ico}</span>", unsafe_allow_html=True)
             
-            c2.markdown(f"{'🟢 ' if czy_nowe else ''}**{row['Nazwa']}** <br> <small>{drive_icon}{map_icon}</small>", unsafe_allow_html=True)
-            c3.write(row['Inwestor'])
-            c4.info(row['Etap'])
+            cols[2].markdown(f"<span class='small-text'>{row['Inwestor']}</span>", unsafe_allow_html=True)
+            cols[3].markdown(f"<span class='small-text'>{row.get('Pracownik', '-')}</span>", unsafe_allow_html=True)
+            
+            with cols[4]:
+                st.markdown(f'<div class="etap-badge">{row["Etap"]}</div>', unsafe_allow_html=True)
+            
             st.markdown('</div>', unsafe_allow_html=True)
