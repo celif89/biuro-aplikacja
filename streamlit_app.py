@@ -10,12 +10,15 @@ st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem; }
     .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
-    /* Stylizacja kart projektów */
     .project-card {
         border: 1px solid #e6e9ef;
         padding: 15px;
         border-radius: 10px;
         margin-bottom: 10px;
+    }
+    iframe {
+        border-radius: 10px;
+        border: 1px solid #ddd;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -102,66 +105,78 @@ if st.session_state.selected_project is not None:
     row = df.iloc[idx]
     st.title(f"📂 Projekt: {row['Nazwa']}")
 
-    # SZYBKIE LINKI (Zawsze na górze szczegółów)
+    # SZYBKIE LINKI I PODGLĄD
     c1, c2 = st.columns(2)
+    link_d = row.get('Link_Drive', "")
+    link_m = row.get('Link_Mapa', "")
+
     with c1:
-        link_d = row.get('Link_Drive', "")
         if pd.notnull(link_d) and str(link_d).startswith("http"):
-            st.link_button("📂 Otwórz Dokumentację (Drive)", str(link_d), type="primary")
+            st.link_button("🚀 Otwórz pełny Drive", str(link_d), type="primary")
         else:
-            st.info("Brak podpiętego folderu Drive.")
+            st.info("Brak linku do Drive.")
     with c2:
-        link_m = row.get('Link_Mapa', "")
         if pd.notnull(link_m) and str(link_m).startswith("http"):
-            st.link_button("📍 Zobacz lokalizację (Maps)", str(link_m))
+            st.link_button("📍 Nawiguj do celu", str(link_m))
         else:
-            st.info("Brak podpiętej mapy.")
+            st.info("Brak linku do Mapy.")
+
+    # --- NOWA SEKCJA: BEZPOŚREDNI PODGLĄD PLIKÓW ---
+    if pd.notnull(link_d) and "drive.google.com" in str(link_d):
+        with st.expander("🔍 PODGLĄD PLIKÓW I DOKUMENTACJI", expanded=True):
+            try:
+                url_str = str(link_d)
+                if "/folders/" in url_str:
+                    f_id = url_str.split("/folders/")[1].split("?")[0]
+                    embed_url = f"https://drive.google.com/embeddedfolderview?id={f_id}#list"
+                    st.components.v1.iframe(embed_url, height=500, scrolling=True)
+                elif "/file/d/" in url_str:
+                    f_id = url_str.split("/file/d/")[1].split("/")[0]
+                    embed_url = f"https://drive.google.com/file/d/{f_id}/preview"
+                    st.components.v1.iframe(embed_url, height=500)
+                else:
+                    st.write("Podgląd dostępny tylko dla folderów i plików PDF/Docs.")
+            except:
+                st.warning("Nie udało się załadować podglądu. Upewnij się, że link jest poprawny.")
 
     st.divider()
 
     with st.form("edycja_full"):
         col1, col2 = st.columns(2)
         with col1:
-            e_nazwa = st.text_input("Nazwa", row['Nazwa'])
+            e_nazwa = st.text_input("Nazwa projektu", row['Nazwa'])
             e_inw = st.text_input("Inwestor", row['Inwestor'])
             e_drive = st.text_input("Link Google Drive (Folder)", row.get('Link_Drive', ""))
         with col2:
-            e_prac = st.text_input("Pracownik", row.get('Pracownik', ""))
-            e_etap = st.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"], index=0)
-            e_mapa = st.text_input("Link Google Maps (Lokalizacja)", row.get('Link_Mapa', ""))
+            e_prac = st.text_input("Osoba prowadząca", row.get('Pracownik', ""))
+            e_etap = st.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"], 
+                                 index=["Koncepcja", "PNB", "Wykonawczy", "Nadzór"].index(row['Etap']) if row['Etap'] in ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"] else 0)
+            e_mapa = st.text_input("Link Google Maps", row.get('Link_Mapa', ""))
         
-        e_notatki = st.text_area("Szczegółowe notatki projektowe", str(row.get('Notatki', "")), height=200)
+        e_notatki = st.text_area("Notatki i ustalenia", str(row.get('Notatki', "")), height=150)
         
-        if st.form_submit_button("💾 Zapisz wszystkie zmiany"):
+        if st.form_submit_button("💾 Zapisz zmiany"):
             # ZABEZPIECZENIE TYPÓW (Fix dla TypeError)
-            # Upewniamy się, że kolumny przyjmują tekst, zanim cokolwiek wpiszemy
             for col in ['Nazwa', 'Inwestor', 'Link_Drive', 'Link_Mapa', 'Pracownik', 'Etap', 'Notatki']:
-                if col not in df.columns:
-                    df[col] = "" # Jeśli kolumny nie ma w ogóle, stwórz ją
-                df[col] = df[col].astype(str) # Zamień całą kolumnę na tekstową
+                if col not in df.columns: df[col] = ""
+                df[col] = df[col].astype(str)
 
-            # Przypisanie nowych wartości
-            df.at[idx, 'Nazwa'] = e_nazwa
-            df.at[idx, 'Inwestor'] = e_inw
-            df.at[idx, 'Link_Drive'] = e_drive
-            df.at[idx, 'Link_Mapa'] = e_mapa
-            df.at[idx, 'Pracownik'] = e_prac
-            df.at[idx, 'Etap'] = e_etap
+            df.at[idx, 'Nazwa'], df.at[idx, 'Inwestor'] = e_nazwa, e_inw
+            df.at[idx, 'Link_Drive'], df.at[idx, 'Link_Mapa'] = e_drive, e_mapa
+            df.at[idx, 'Pracownik'], df.at[idx, 'Etap'] = e_prac, e_etap
             df.at[idx, 'Notatki'] = e_notatki
             df.at[idx, 'Ostatnia_Zmiana'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            # Zapis do Google Sheets
             conn.update(worksheet="Projekty", data=df)
-            zapisz_log(st.session_state.user_name, e_nazwa, "Aktualizacja danych i linków")
+            zapisz_log(st.session_state.user_name, e_nazwa, "Edycja danych i podglądu")
             odswiez_baze()
             st.session_state.selected_project = None
             st.rerun()
 
 # --- WIDOK LISTY ---
 else:
-    st.title("🏗️ Zarządzanie Projektami")
+    st.title("🏗️ System Zarządzania Biurem")
     
-    # Powiadomienia
     logs_df = pobierz_dane("Logi")
     if not logs_df.empty:
         n_l = logs_df[(logs_df['Data'] > st.session_state.last_login) & (logs_df['Uzytkownik'] != st.session_state.user_name)]
@@ -182,7 +197,6 @@ else:
                     st.session_state.selected_project = i
                     st.rerun()
             
-            # Ikony informacyjne obok nazwy
             drive_icon = "📁 " if pd.notnull(row.get('Link_Drive')) and str(row.get('Link_Drive')).startswith("http") else ""
             map_icon = "📍 " if pd.notnull(row.get('Link_Mapa')) and str(row.get('Link_Mapa')).startswith("http") else ""
             
