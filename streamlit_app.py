@@ -1,141 +1,134 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
+import datetime
 
-# 1. KONFIGURACJA LOGOWANIA
+# --- KONFIGURACJA STRONY ---
+st.set_page_config(page_title="Manager Biura PRO", layout="wide")
+
+# --- POŁĄCZENIE Z BAZĄ ---
+# Upewnij się, że w Secrets masz poprawny link i klucze!
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def pobierz_dane(sheet_name):
+    return conn.read(worksheet=sheet_name, ttl=0)
+
+# --- FUNKCJE SYSTEMOWE ---
+def zapisz_log(uzytkownik, projekt, akcja, url):
+    try:
+        logs_df = pobierz_dane("Logi")
+        nowy_log = pd.DataFrame([{
+            "Data": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Uzytkownik": uzytkownik,
+            "Projekt": projekt,
+            "Akcja": akcja
+        }])
+        updated_logs = pd.concat([logs_df, nowy_log], ignore_index=True)
+        conn.update(worksheet="Logi", data=updated_logs)
+    except Exception as e:
+        st.error(f"Błąd logowania zmian: {e}")
+
+def aktualizuj_czas_logowania(uzytkownik):
+    users_df = pobierz_dane("Uzytkownicy")
+    teraz = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if uzytkownik in users_df['Uzytkownik'].values:
+        users_df.loc[users_df['Uzytkownik'] == uzytkownik, 'OstatnieLogowanie'] = teraz
+    else:
+        new_user = pd.DataFrame([{"Uzytkownik": uzytkownik, "OstatnieLogowanie": teraz}])
+        users_df = pd.concat([users_df, new_user], ignore_index=True)
+    conn.update(worksheet="Uzytkownicy", data=users_df)
+
+# --- SYSTEM LOGOWANIA ---
 def check_password():
-    def password_entered():
-        if st.session_state["password"] == "biuro": # <--- TWOJE HASŁO
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
     if "password_correct" not in st.session_state:
-        st.text_input("Podaj hasło", type="password", on_change=password_entered, key="password")
+        st.title("🔐 Logowanie do Systemu Biura")
+        user_list = ["Wybierz...", "Adam", "Ewa", "Marek", "Pracownik1"] # Dodaj swoich pracowników
+        user_name = st.selectbox("Wybierz użytkownika", user_list)
+        password = st.text_input("Hasło", type="password")
+        
+        if st.button("Zaloguj"):
+            if password == "biuro" and user_name != "Wybierz...":
+                # Pobieramy datę poprzedniego wejścia ZANIM zaktualizujemy na nową
+                users_df = pobierz_dane("Uzytkownicy")
+                last_time = users_df.loc[users_df['Uzytkownik'] == user_name, 'OstatnieLogowanie'].values
+                st.session_state["last_login"] = last_time[0] if len(last_time) > 0 else "2000-01-01 00:00:00"
+                
+                st.session_state["password_correct"] = True
+                st.session_state["user_name"] = user_name
+                aktualizuj_czas_logowania(user_name)
+                st.rerun()
+            else:
+                st.error("Niepoprawne hasło lub nie wybrano użytkownika")
         return False
-    return st.session_state.get("password_correct", False)
+    return True
 
+# --- GŁÓWNA CZĘŚĆ APLIKACJI ---
 if check_password():
-    st.set_page_config(page_title="Manager Biura", layout="wide")
+    df = pobierz_dane("Sheet1") # Twoja główna zakładka z projektami
     
-    # Połączenie i dane
-    url = "https://docs.google.com/spreadsheets/d/1G9RAEbTst4RoD1_Pq1Nm1Q5n1qG6_woDcQv2cnh3100/edit?usp=sharing"
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(spreadsheet=url, ttl=0)
-
-    # Inicjalizacja pamięci wybranego projektu
     if "selected_project" not in st.session_state:
         st.session_state.selected_project = None
 
-    # --- PANEL BOCZNY (Zawsze widoczny) ---
-    with st.sidebar:
-        st.header("⚙️ Opcje")
-        if st.button("🏠 Powrót do listy głównej"):
-            st.session_state.selected_project = None
-            st.rerun()
-            
-        st.divider()
+    # --- PANEL POWIADOMIEŃ O NOWOŚCIACH ---
+    if st.session_state.selected_project is None:
+        st.title(f"Witaj, {st.session_state.user_name}! 👋")
         
-        # FORMULARZ DODAWANIA - Tutaj był błąd (brakowało przycisku submit)
-        with st.form("form_nowy_projekt"):
-            st.subheader("➕ Nowy Projekt")
-            n_nazwa = st.text_input("Nazwa projektu")
-            n_inwestor = st.text_input("Inwestor")
-            n_etap = st.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"])
-            n_termin = st.date_input("Termin")
-            n_pracownik = st.text_input("Osoba")
+        try:
+            logs_df = pobierz_dane("Logi")
+            # Filtrujemy zmiany zrobione przez INNYCH po naszym ostatnim logowaniu
+            nowe_zmiany = logs_df[
+                (logs_df['Data'] > st.session_state.last_login) & 
+                (logs_df['Uzytkownik'] != st.session_state.user_name)
+            ]
             
-            # TO JEST KLUCZOWY PRZYCISK:
-            btn_dodaj = st.form_submit_button("Dodaj projekt")
-            
-            if btn_dodaj:
-                if n_nazwa:
-                    new_row = pd.DataFrame([{
-                        "Nazwa": n_nazwa,
-                        "Inwestor": n_inwestor,
-                        "Etap": n_etap,
-                        "Termin": str(n_termin),
-                        "Status": "W toku",
-                        "Pracownik": n_pracownik
-                    }])
-                    updated_df = pd.concat([df, new_row], ignore_index=True)
-                    conn.update(spreadsheet=url, data=updated_df)
-                    st.success("Dodano!")
-                    st.rerun()
-                else:
-                    st.error("Podaj nazwę!")
-
-        st.divider()
-        if st.button("🚪 Wyloguj"):
-            st.session_state["password_correct"] = False
-            st.rerun()
+            if not nowe_zmiany.empty:
+                with st.expander(f"🔔 Masz {len(nowe_zmiany)} nowych powiadomień!", expanded=True):
+                    for _, log in nowe_zmiany.sort_values(by="Data", ascending=False).iterrows():
+                        st.info(f"O godzinie **{log['Data']}**, użytkownik **{log['Uzytkownik']}** wykonał: **{log['Akcja']}** w projekcie **{log['Projekt']}**")
+        except:
+            st.warning("Dodaj arkusz 'Logi', aby widzieć powiadomienia.")
 
     # --- WIDOK 1: SZCZEGÓŁY PROJEKTU ---
     if st.session_state.selected_project is not None:
         idx = st.session_state.selected_project
         project_data = df.iloc[idx]
-
-        st.header(f"📂 Projekt: {project_data['Nazwa']}")
         
-        with st.form("edycja_szczegolowa"):
-            col1, col2 = st.columns(2)
-            with col1:
-                e_nazwa = st.text_input("Nazwa", project_data['Nazwa'])
-                e_inwestor = st.text_input("Inwestor", project_data['Inwestor'])
-            with col2:
-                etapy = ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"]
-                idx_etap = etapy.index(project_data['Etap']) if project_data['Etap'] in etapy else 0
-                e_etap = st.selectbox("Etap", etapy, index=idx_etap)
-                e_pracownik = st.text_input("Osoba", project_data['Pracownik'])
-            
-            st.subheader("📝 Szczegółowe notatki")
-            
-            # POBIERANIE NOTATEK Z BAZY DO POLA TEKSTOWEGO
-            obecne_notatki = ""
-            if 'Notatki' in project_data:
-                obecne_notatki = str(project_data['Notatki']) if pd.notnull(project_data['Notatki']) else ""
-            
-            e_notatki = st.text_area("Wpisz ustalenia, numery działek, telefony itp.", value=obecne_notatki, height=200)
+        if st.button("⬅️ Powrót"):
+            st.session_state.selected_project = None
+            st.rerun()
 
-            if st.form_submit_button("💾 Zapisz zmiany i wróć"):
-                # Aktualizacja danych w lokalnym DataFrame
-                df.at[idx, 'Nazwa'] = e_nazwa
-                df.at[idx, 'Inwestor'] = e_inwestor
-                df.at[idx, 'Etap'] = e_etap
+        with st.form("edycja_szczegolowa"):
+            st.header(f"Edycja: {project_data['Nazwa']}")
+            e_pracownik = st.text_input("Osoba odpowiedzialna", project_data['Pracownik'])
+            e_notatki = st.text_area("Notatki", str(project_data['Notatki']) if 'Notatki' in project_data else "")
+
+            if st.form_submit_button("💾 Zapisz zmiany"):
                 df.at[idx, 'Pracownik'] = e_pracownik
-                
                 if 'Notatki' in df.columns:
                     df['Notatki'] = df['Notatki'].astype(str)
                     df.at[idx, 'Notatki'] = e_notatki
                 
-                # Wysłanie do Google Sheets
-                conn.update(spreadsheet=url, data=df)
+                conn.update(data=df)
+                # ZAPIS LOGU ZMIAN
+                zapisz_log(st.session_state.user_name, project_data['Nazwa'], "Zmiana notatek/pracownika", "")
                 st.success("Zapisano!")
                 st.session_state.selected_project = None
                 st.rerun()
 
-    # --- WIDOK 2: GŁÓWNA LISTA ---
+    # --- WIDOK 2: LISTA PROJEKTÓW ---
     else:
-        st.title("🏗️ System Zarządzania Projektami")
-        
-        if not df.empty:
-            # Nagłówki "tabeli"
-            h1, h2, h3, h4 = st.columns([1, 4, 3, 3])
-            h1.write("**Akcja**")
-            h2.write("**Nazwa Projektu**")
-            h3.write("**Inwestor**")
-            h4.write("**Termin**")
+        st.subheader("Lista projektów")
+        for i, row in df.iterrows():
+            col1, col2 = st.columns([1, 10])
+            with col1:
+                if st.button("👁️", key=f"v_{i}"):
+                    st.session_state.selected_project = i
+                    st.rerun()
+            with col2:
+                st.write(f"**{row['Nazwa']}** - {row['Inwestor']} (Osoba: {row['Pracownik']})")
             st.divider()
 
-            for i, row in df.iterrows():
-                c1, c2, c3, c4 = st.columns([1, 4, 3, 3])
-                with c1:
-                    if st.button("👁️", key=f"view_{i}"):
-                        st.session_state.selected_project = i
-                        st.rerun()
-                c2.write(row['Nazwa'])
-                c3.write(row['Inwestor'])
-                c4.write(str(row['Termin']))
-                st.divider()
-        else:
-            st.info("Baza projektów jest pusta.")
+    # Wylogowanie
+    if st.sidebar.button("Wyloguj"):
+        st.session_state["password_correct"] = False
+        st.rerun()
