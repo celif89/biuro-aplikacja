@@ -133,12 +133,24 @@ if st.session_state.selected_project is not None:
         e_notatki = st.text_area("Szczegółowe notatki projektowe", str(row.get('Notatki', "")), height=200)
         
         if st.form_submit_button("💾 Zapisz wszystkie zmiany"):
-            df.at[idx, 'Nazwa'], df.at[idx, 'Inwestor'] = e_nazwa, e_inw
-            df.at[idx, 'Link_Drive'], df.at[idx, 'Link_Mapa'] = e_drive, e_mapa
-            df.at[idx, 'Pracownik'], df.at[idx, 'Etap'] = e_prac, e_etap
+            # ZABEZPIECZENIE TYPÓW (Fix dla TypeError)
+            # Upewniamy się, że kolumny przyjmują tekst, zanim cokolwiek wpiszemy
+            for col in ['Nazwa', 'Inwestor', 'Link_Drive', 'Link_Mapa', 'Pracownik', 'Etap', 'Notatki']:
+                if col not in df.columns:
+                    df[col] = "" # Jeśli kolumny nie ma w ogóle, stwórz ją
+                df[col] = df[col].astype(str) # Zamień całą kolumnę na tekstową
+
+            # Przypisanie nowych wartości
+            df.at[idx, 'Nazwa'] = e_nazwa
+            df.at[idx, 'Inwestor'] = e_inw
+            df.at[idx, 'Link_Drive'] = e_drive
+            df.at[idx, 'Link_Mapa'] = e_mapa
+            df.at[idx, 'Pracownik'] = e_prac
+            df.at[idx, 'Etap'] = e_etap
             df.at[idx, 'Notatki'] = e_notatki
             df.at[idx, 'Ostatnia_Zmiana'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
+            # Zapis do Google Sheets
             conn.update(worksheet="Projekty", data=df)
             zapisz_log(st.session_state.user_name, e_nazwa, "Aktualizacja danych i linków")
             odswiez_baze()
