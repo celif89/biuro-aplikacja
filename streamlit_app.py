@@ -4,15 +4,31 @@ import pandas as pd
 import datetime
 
 # --- 1. KONFIGURACJA I STYLE ---
-st.set_page_config(page_title="Manager Biura PRO", layout="wide")
+# Zmieniamy layout na "centered", aby ograniczyć szerokość na dużych monitorach
+st.set_page_config(page_title="Manager Biura PRO", layout="centered")
 
 st.markdown("""
     <style>
-    .block-container { padding-top: 1rem; max-width: 98%; }
-    .project-row { border-bottom: 1px solid #f0f2f6; padding: 5px 10px; display: flex; align-items: center; }
-    .stButton>button { padding: 2px 5px !important; height: 26px !important; font-size: 14px !important; }
+    /* Usunięcie nadmiarowego marginesu na górze strony */
+    .block-container { padding-top: 2rem; }
+    
+    /* Stylizacja wierszy projektów na liście */
+    .project-row { 
+        border-bottom: 1px solid #f0f2f6; 
+        padding: 8px 15px; 
+        display: flex; 
+        align-items: center; 
+        border-radius: 4px;
+        margin-bottom: 2px;
+    }
+    .project-row:hover { background-color: #f9f9f9; }
+    
+    /* Przyciski i fonty */
+    .stButton>button { padding: 2px 10px !important; height: 30px !important; font-size: 14px !important; }
     .small-text { font-size: 0.85rem; color: #555; }
-    .etap-badge { font-size: 0.75rem; background: #e1f5fe; color: #01579b; padding: 2px 8px; border-radius: 12px; font-weight: bold; }
+    .etap-badge { font-size: 0.75rem; background: #e1f5fe; color: #01579b; padding: 2px 10px; border-radius: 12px; font-weight: bold; }
+    
+    /* Tabele i inne elementy */
     .progress-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-bottom: 10px; }
     .progress-table td { padding: 8px; border-bottom: 1px solid #eee; }
     </style>
@@ -88,14 +104,14 @@ if st.session_state.selected_project is not None:
     with tab1:
         col_m1, col_m2 = st.columns(2)
         with col_m1:
-            st.subheader("📌 Metryka (Umowa)")
-            m_text = st.text_area("Dane stałe projektu:", value=str(row.get('Metryka', "")) if pd.notnull(row.get('Metryka')) else "", height=250)
+            st.subheader("📌 Metryka")
+            m_text = st.text_area("Informacje o umowie:", value=str(row.get('Metryka', "")) if pd.notnull(row.get('Metryka')) else "", height=250)
             if st.button("Zapisz Metrykę"):
                 df.at[idx, 'Metryka'] = m_text
                 conn.update(worksheet="Projekty", data=df); odswiez_baze(); st.success("Zapisano")
 
         with col_m2:
-            st.subheader("✅ Lista Zadań")
+            st.subheader("✅ Zadania")
             zadania_raw = str(row.get('Lista_Zadań', ""))
             lista_z = [z.split("|") for z in zadania_raw.split("||") if "|" in z]
             
@@ -120,30 +136,29 @@ if st.session_state.selected_project is not None:
                         conn.update(worksheet="Projekty", data=df); odswiez_baze(); st.rerun()
 
     with tab2:
-        st.subheader("📝 Dziennik Prac")
+        st.subheader("📝 Historia")
         hist = str(row.get('Notatki', ""))
         if hist and hist != "nan":
             for wpis in reversed(hist.split("||")):
                 if "|" in wpis:
                     cz = wpis.split("|")
-                    st.write(f"**{cz[0]}** - {cz[1]}: {cz[2]}")
+                    st.info(f"**{cz[0]}** - {cz[1]}: {cz[2]}")
         with st.form("d_wpis"):
-            wpis_t = st.text_input("Opisz dzisiejszy postęp:")
-            if st.form_submit_button("Zapisz w dzienniku"):
+            wpis_t = st.text_input("Dodaj wpis do dziennika:")
+            if st.form_submit_button("Zapisz"):
                 dt = datetime.datetime.now().strftime("%d.%m.%Y")
                 nowy_w = f"{dt}|{st.session_state.user_name}|{wpis_t}"
                 df.at[idx, 'Notatki'] = nowy_w if not hist or hist=="nan" else hist + "||" + nowy_w
                 conn.update(worksheet="Projekty", data=df); odswiez_baze(); st.rerun()
 
     with tab3:
-        st.subheader("⚙️ Ustawienia i Podgląd")
+        st.subheader("⚙️ Linki i Folder Drive")
         with st.form("set_f"):
-            c_s1, c_s2 = st.columns(2)
-            e_inw = c_s1.text_input("Inwestor", row['Inwestor'])
-            e_etap = c_s1.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"])
-            e_drive = c_s2.text_input("Link Drive", row.get('Link_Drive', ""))
-            e_mapa = c_s2.text_input("Link Mapa", row.get('Link_Mapa', ""))
-            if st.form_submit_button("Zapisz Ustawienia"):
+            e_inw = st.text_input("Inwestor", row['Inwestor'])
+            e_etap = st.selectbox("Etap", ["Koncepcja", "PNB", "Wykonawczy", "Nadzór"])
+            e_drive = st.text_input("Link Drive", row.get('Link_Drive', ""))
+            e_mapa = st.text_input("Link Mapa", row.get('Link_Mapa', ""))
+            if st.form_submit_button("💾 Zapisz wszystko"):
                 for c in ['Link_Drive', 'Link_Mapa', 'Inwestor', 'Etap']: df[c] = df[c].astype(str)
                 df.at[idx, 'Inwestor'], df.at[idx, 'Etap'] = e_inw, e_etap
                 df.at[idx, 'Link_Drive'], df.at[idx, 'Link_Mapa'] = e_drive, e_mapa
@@ -151,29 +166,26 @@ if st.session_state.selected_project is not None:
         
         link_d = row.get('Link_Drive', "")
         if pd.notnull(link_d) and "drive.google.com" in str(link_d):
-            with st.expander("📂 Podgląd plików Drive", expanded=True):
-                if "/folders/" in str(link_d):
-                    fid = str(link_d).split("/folders/")[1].split("?")[0]
-                    st.components.v1.iframe(f"https://drive.google.com/embeddedfolderview?id={fid}#list", height=400)
+            if "/folders/" in str(link_d):
+                fid = str(link_d).split("/folders/")[1].split("?")[0]
+                st.components.v1.iframe(f"https://drive.google.com/embeddedfolderview?id={fid}#list", height=400)
 
 # --- WIDOK LISTY ---
 else:
     st.subheader("🏗️ Lista Projektów")
-    h = st.columns([0.5, 4, 3, 2, 1.5])
-    h[0].caption("Otwórz"); h[1].caption("Nazwa"); h[2].caption("Inwestor"); h[3].caption("Prowadzący"); h[4].caption("Etap")
     st.divider()
 
     for i, row in df.iterrows():
         czy_n = str(row.get('Ostatnia_Zmiana', "")) > st.session_state.last_login
-        st.markdown(f'<div class="project-row" style="{"background:#f0fff4" if czy_n else ""}">', unsafe_allow_html=True)
-        c = st.columns([0.5, 4, 3, 2, 1.5])
+        st.markdown(f'<div class="project-row" style="{"background:#fafffa; border-left: 4px solid #28a745;" if czy_n else ""}">', unsafe_allow_html=True)
+        c = st.columns([1, 6, 3]) # Mniej kolumn, aby były szersze w trybie centered
         with c[0]:
             if st.button("👁️", key=f"L_{i}"):
                 st.session_state.selected_project = i; st.rerun()
+        
         d_i = "📁" if pd.notnull(row.get('Link_Drive')) and "http" in str(row.get('Link_Drive')) else ""
-        m_i = "📍" if pd.notnull(row.get('Link_Mapa')) and "http" in str(row.get('Link_Mapa')) else ""
-        c[1].markdown(f"{'🟢 ' if czy_n else ''}**{row['Nazwa']}** <span class='small-text'>{d_i}{m_i}</span>", unsafe_allow_html=True)
-        c[2].write(f"<small>{row['Inwestor']}</small>", unsafe_allow_html=True)
-        c[3].write(f"<small>{row.get('Pracownik', '-')}</small>", unsafe_allow_html=True)
-        with c[4]: st.markdown(f'<div class="etap-badge">{row["Etap"]}</div>', unsafe_allow_html=True)
+        c[1].markdown(f"**{row['Nazwa']}** <span class='small-text'>{d_i}</span><br><small>{row['Inwestor']}</small>", unsafe_allow_html=True)
+        
+        with c[2]:
+            st.markdown(f'<div style="text-align:right"><span class="etap-badge">{row["Etap"]}</span></div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
