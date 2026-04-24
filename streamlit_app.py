@@ -10,7 +10,7 @@ st.markdown("""
     <style>
     /* Ograniczenie szerokości głównego kontenera do 1300px i wyśrodkowanie go */
     .main > div {
-        max-width: 1300px;
+        max-width: 1000px;
         margin-left: auto;
         margin-right: auto;
     }
