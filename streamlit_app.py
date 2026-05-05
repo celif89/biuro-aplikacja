@@ -9,32 +9,113 @@ st.set_page_config(page_title="Biuro PRO", layout="wide")
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #fcfcfc; }
-    .main > div { max-width: 1100px; margin-left: auto; margin-right: auto; padding-top: 1.5rem; }
-
-    /* STYL KARTY */
-    .project-wrapper {
-        position: relative; /* Pozwala na pozycjonowanie przycisku wewnątrz */
-        margin-bottom: 12px;
+    
+    /* Główne kontenery */
+    .main > div { max-width: 1100px; margin-left: auto; margin-right: auto; padding-top: 1rem; }
+    
+    /* RESET PRZYCISKU STREAMLIT - Zmieniamy go w kartę */
+    div.stButton > button {
+        width: 100%;
+        height: auto;
+        padding: 0 !important;
+        background-color: white !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 10px !important;
+        color: inherit !important;
+        text-align: left !important;
+        display: block !important;
+        transition: all 0.2s ease !important;
+        margin-bottom: 12px !important;
     }
 
-    .project-card {
-        background: white;
-        border-radius: 10px;
-        border: 1px solid #e2e8f0;
+    div.stButton > button:hover {
+        border-color: #3b82f6 !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05) !important;
+        transform: translateY(-1px);
+    }
+
+    /* Styl dla "Nowych" projektów (zielony pasek) */
+    /* Streamlit nie pozwala łatwo nadawać klas konkretnym buttonom, 
+       więc użyjemy triku z emotką lub po prostu czystego designu */
+
+    /* WEWNĘTRZNA STRUKTURA KARTY (HTML wewnątrz buttona) */
+    .c-box {
         padding: 16px 24px;
-        transition: all 0.2s ease;
         display: flex;
         align-items: center;
         justify-content: space-between;
+        width: 100%;
     }
+    .c-title { font-size: 1rem; font-weight: 600; color: #0f172a; }
+    .c-sub { font-size: 0.85rem; color: #64748b; font-weight: 400; }
+    .c-label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 600; }
+    .c-val { font-size: 0.85rem; color: #334155; font-weight: 500; }
     
-    .project-wrapper:hover .project-card {
-        border-color: #3b82f6;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        background: #f9fbff;
+    .c-badge {
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: #f1f5f9;
+        color: #475569;
     }
+    </style>
+    """, unsafe_allow_html=True)
 
+# --- 2. POŁĄCZENIE I DANE ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+@st.cache_data(ttl=600)
+def pobierz_dane(sheet_name):
+    try: return conn.read(worksheet=sheet_name, ttl=0)
+    except: return pd.DataFrame()
+
+# --- 3. LOGIKA APLIKACJI ---
+df = pobierz_dane("Projekty")
+if "selected_project" not in st.session_state: st.session_state.selected_project = None
+
+# --- WIDOK SZCZEGÓŁÓW ---
+if st.session_state.selected_project is not None:
+    idx = st.session_state.selected_project
+    row = df.iloc[idx]
+    
+    st.title(f"📂 {row['Nazwa']}")
+    if st.button("← Wróć do listy"):
+        st.session_state.selected_project = None
+        st.rerun()
+    st.divider()
+    # Tu reszta Twoich zakładek (Metryka, Zadania itd.)
+    st.info("Tutaj zarządzasz szczegółami projektu.")
+
+# --- WIDOK LISTY (KLIKALNE KARTY) ---
+else:
+    st.markdown("<h1>🏗️ Aktywne Projekty</h1>", unsafe_allow_html=True)
+    st.markdown("<p>Kliknij bezpośrednio w kartę projektu, aby go otworzyć.</p>", unsafe_allow_html=True)
+    
+    for i, row in df.iterrows():
+        # Przygotowujemy ikony i status
+        d_i = "📁" if pd.notnull(row.get('Link_Drive')) and "http" in str(row.get('Link_Drive')) else ""
+        m_i = "📍" if pd.notnull(row.get('Link_Mapa')) and "http" in str(row.get('Link_Mapa')) else ""
+        
+        # Tworzymy treść karty jako jeden wielki ciąg HTML
+        # Button w Streamlit może przyjąć tekst, ale my "oszukamy" system, 
+        # wstrzykując tam sformatowany tekst, który ostylowaliśmy w CSS.
+        
+        button_content = f"""
+            {row['Nazwa']} {d_i} {m_i}
+            Inwestor: {row['Inwestor']} | Prowadzący: {row.get('Pracownik', '-')} | Status: {row['Etap']}
+        """
+        
+        # Aby uzyskać bogaty wygląd wewnątrz buttona bez błędów Streamlita, 
+        # użyjemy standardowego buttona, a CSS zajmie się resztą.
+        # UWAGA: Streamlit nie renderuje HTML wewnątrz labela buttona, 
+        # dlatego stylizujemy SAM button, by wyglądał jak karta.
+        
+        label = f"PROJEKT: {row['Nazwa']} \n Inwestor: {row['Inwestor']} | Etap: {row['Etap']}"
+        
+        if st.button(label, key=f"card_{i}"):
+            st.session_state.selected_project = i
+            st.rerun()
     .is-new { border-left: 5px solid #10b981 !important; background: #f0fdf4 !important; }
 
     /* TYPOGRAFIA */
