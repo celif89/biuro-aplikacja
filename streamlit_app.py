@@ -3,38 +3,83 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import datetime
 
-# --- 1. KONFIGURACJA I DESIGN ---
+# --- 1. KONFIGURACJA ---
 st.set_page_config(page_title="Biuro PRO", layout="wide")
 
+# CSS - naprawiony i bezpieczny
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    .main > div { max-width: 1000px; margin: 0 auto; }
     
-    /* Główne kontenery */
-    .main > div { max-width: 1100px; margin-left: auto; margin-right: auto; padding-top: 1rem; }
-    
-    /* RESET PRZYCISKU STREAMLIT - Zmieniamy go w kartę */
+    /* Ukrywamy standardowy wygląd przycisku, robimy z niego kartę */
     div.stButton > button {
         width: 100%;
-        height: auto;
-        padding: 0 !important;
         background-color: white !important;
         border: 1px solid #e2e8f0 !important;
-        border-radius: 10px !important;
-        color: inherit !important;
+        padding: 20px !important;
+        border-radius: 12px !important;
         text-align: left !important;
-        display: block !important;
         transition: all 0.2s ease !important;
-        margin-bottom: 12px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
     }
-
+    
     div.stButton > button:hover {
         border-color: #3b82f6 !important;
+        background-color: #f8faff !important;
         box-shadow: 0 4px 12px rgba(0,0,0,0.05) !important;
-        transform: translateY(-1px);
     }
 
-    /* Styl dla "Nowych" projektów (zielony pasek) */
+    /* Styl dla tekstu wewnątrz przycisku */
+    .btn-content { color: #1e293b; pointer-events: none; }
+    .btn-title { font-size: 1.1rem; font-weight: 600; display: block; margin-bottom: 4px; }
+    .btn-desc { font-size: 0.85rem; color: #64748b; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. DANE ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+@st.cache_data(ttl=600)
+def pobierz_dane():
+    return conn.read(worksheet="Projekty", ttl=0)
+
+# --- 3. LOGIKA ---
+if "selected_project" not in st.session_state:
+    st.session_state.selected_project = None
+
+df = pobierz_dane()
+
+# --- WIDOK SZCZEGÓŁÓW ---
+if st.session_state.selected_project is not None:
+    row = df.iloc[st.session_state.selected_project]
+    st.header(f"📂 {row['Nazwa']}")
+    if st.button("← Powrót do listy"):
+        st.session_state.selected_project = None
+        st.rerun()
+    
+    st.divider()
+    st.subheader("Szczegóły projektu")
+    st.write(f"**Inwestor:** {row['Inwestor']}")
+    st.write(f"**Etap:** {row['Etap']}")
+    # Tutaj dodaj swoje zakładki i resztę funkcji...
+
+# --- WIDOK LISTY ---
+else:
+    st.title("🏗️ Aktywne Projekty")
+    st.write("Wybierz projekt, aby zobaczyć szczegóły.")
+    
+    for i, row in df.iterrows():
+        # Przygotowanie tekstu do przycisku
+        # Używamy prostego tekstu, bo Streamlit w przyciskach słabo znosi HTML
+        tytul = f"{row['Nazwa']}"
+        opis = f"Inwestor: {row['Inwestor']}  |  Prowadzący: {row.get('Pracownik', '-')}  |  Etap: {row['Etap']}"
+        
+        # Cała karta to ten przycisk
+        if st.button(f"{tytul}\n{opis}", key=f"p_{i}"):
+            st.session_state.selected_project = i
+            st.rerun()    /* Styl dla "Nowych" projektów (zielony pasek) */
     /* Streamlit nie pozwala łatwo nadawać klas konkretnym buttonom, 
        więc użyjemy triku z emotką lub po prostu czystego designu */
 
