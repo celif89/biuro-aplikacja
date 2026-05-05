@@ -120,7 +120,7 @@ if "password_correct" not in st.session_state:
         u = st.selectbox("Użytkownik", ["Adam", "Ewa", "Marek", "Pracownik1"])
         p = st.text_input("Hasło", type="password")
         if st.button("Zaloguj się"):
-            if p == "TwojeTajneHaslo123":
+            if p == "biuro":
                 st.session_state.update({"user_name": u, "password_correct": True, "last_login": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
                 st.rerun()
     st.stop()
