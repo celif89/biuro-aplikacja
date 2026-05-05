@@ -3,75 +3,77 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import datetime
 
-# --- 1. KONFIGURACJA I NOWOCZESNY DESIGN ---
+# --- 1. KONFIGURACJA I DESIGN ---
 st.set_page_config(page_title="Biuro PRO", layout="wide")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-    
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #fcfcfc; }
+    .main > div { max-width: 1100px; margin-left: auto; margin-right: auto; padding-top: 1.5rem; }
 
-    .main > div { max-width: 1200px; margin-left: auto; margin-right: auto; padding-top: 1rem; }
+    /* STYL KARTY */
+    .project-wrapper {
+        position: relative; /* Pozwala na pozycjonowanie przycisku wewnątrz */
+        margin-bottom: 12px;
+    }
 
-    /* Nagłówek główny */
-    h1 { font-size: 1.6rem !important; font-weight: 600; color: #1e293b; margin-bottom: 0.5rem !important; }
-    p { font-size: 0.9rem; color: #64748b; }
-
-    /* STYL KARTY PROJEKTU */
-    .project-container {
-        position: relative;
+    .project-card {
         background: white;
-        border-radius: 8px;
+        border-radius: 10px;
         border: 1px solid #e2e8f0;
-        margin-bottom: 10px;
-        padding: 12px 20px;
+        padding: 16px 24px;
         transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
     }
     
-    .project-container:hover {
+    .project-wrapper:hover .project-card {
         border-color: #3b82f6;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        background: #f8faff;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        background: #f9fbff;
     }
 
-    .new-project { border-left: 4px solid #10b981 !important; background: #f0fdf4 !important; }
+    .is-new { border-left: 5px solid #10b981 !important; background: #f0fdf4 !important; }
 
-    /* TYPOGRAFIA W KARCIE */
-    .proj-name { font-size: 1rem; font-weight: 600; color: #0f172a; margin-bottom: 2px; }
-    .proj-info { font-size: 0.8rem; color: #64748b; }
-    .proj-label { font-size: 0.75rem; font-weight: 500; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px; }
-    .proj-value { font-size: 0.85rem; color: #334155; font-weight: 500; }
+    /* TYPOGRAFIA */
+    .p-title { font-size: 1.05rem; font-weight: 600; color: #0f172a; margin: 0; }
+    .p-sub { font-size: 0.85rem; color: #64748b; margin-top: 2px; }
+    .p-label { font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .p-val { font-size: 0.9rem; color: #334155; font-weight: 500; }
 
-    /* ETYKIETA ETAPU */
-    .badge {
-        font-size: 0.7rem;
-        font-weight: 600;
-        padding: 3px 10px;
-        border-radius: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.02em;
-    }
-    .b-koncepcja { background: #eff6ff; color: #2563eb; }
-    .b-pnb { background: #fffbeb; color: #d97706; }
-    .b-wykonawczy { background: #f0fdf4; color: #16a34a; }
-    .b-nadzor { background: #faf5ff; color: #9333ea; }
+    /* STATUSY */
+    .badge { font-size: 0.7rem; font-weight: 700; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; }
+    .b-blue { background: #eff6ff; color: #2563eb; }
+    .b-green { background: #f0fdf4; color: #16a34a; }
+    .b-orange { background: #fffbeb; color: #d97706; }
 
-    /* HACK: UKRYCIE PRZYCISKU STREAMLIT I ROZCIĄGNIĘCIE GO NA CAŁĄ KARTĘ */
-    div[data-testid="stVerticalBlock"] > div:has(button[key^="pbtn_"]) {
+    /* MAGICZNY TRIK: PRZEZROCZYSTY PRZYCISK NA CAŁEJ KARCIE */
+    .stButton > button {
         position: absolute;
-        width: 100%;
-        height: 100%;
         top: 0;
         left: 0;
-        z-index: 10;
-        opacity: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent !important;
+        border: none !important;
+        color: transparent !important;
+        z-index: 10; /* Przycisk jest na wierzchu */
+        cursor: pointer;
     }
-    button[key^="pbtn_"] { width: 100%; height: 60px; cursor: pointer; }
+    .stButton > button:hover, .stButton > button:active, .stButton > button:focus {
+        background: transparent !important;
+        color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+    /* Ukrycie dodatkowego odstępu generowanego przez Streamlit dla przycisków */
+    div[data-testid="stVerticalBlock"] > div:has(button) { margin: 0 !important; padding: 0 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. LOGIKA DANYCH ---
+# --- 2. POŁĄCZENIE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 @st.cache_data(ttl=600)
@@ -81,96 +83,60 @@ def pobierz_dane(sheet_name):
 
 def odswiez(): st.cache_data.clear()
 
-def get_badge(etap):
-    e = str(etap).lower()
-    if 'koncepcja' in e: return 'b-koncepcja'
-    if 'pnb' in e: return 'b-pnb'
-    if 'wykonawczy' in e: return 'b-wykonawczy'
-    return 'b-nadzor'
-
-# --- 3. LOGOWANIE (SKRÓCONE) ---
-if "password_correct" not in st.session_state:
-    st.title("🏗️ Logowanie")
-    u = st.selectbox("Użytkownik", ["Adam", "Ewa", "Marek", "Pracownik1"])
-    p = st.text_input("Hasło", type="password")
-    if st.button("Zaloguj"):
-        if p == "Haslo123":
-            st.session_state.update({"user_name": u, "password_correct": True, "last_login": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
-            st.rerun()
-    st.stop()
-
-# --- 4. GŁÓWNA APLIKACJA ---
+# --- 3. GŁÓWNA LOGIKA ---
 df = pobierz_dane("Projekty")
 if "selected_project" not in st.session_state: st.session_state.selected_project = None
 
-# SIDEBAR
+# SIDEBAR (dla porządku)
 with st.sidebar:
-    st.write(f"Zalogowany: **{st.session_state.user_name}**")
-    if st.button("🏠 Powrót do listy", use_container_width=True):
+    if st.button("🏠 Lista Główna", use_container_width=True):
         st.session_state.selected_project = None; st.rerun()
-    if st.button("🔄 Odśwież dane", use_container_width=True):
+    if st.button("🔄 Odśwież Dane", use_container_width=True):
         odswiez(); st.rerun()
-    st.divider()
-    if st.button("🚪 Wyloguj"):
-        del st.session_state["password_correct"]; st.rerun()
 
-# --- WIDOK SZCZEGÓŁÓW ---
+# --- WIDOK PROJEKTU ---
 if st.session_state.selected_project is not None:
     idx = st.session_state.selected_project
     row = df.iloc[idx]
+    st.title(f"📂 {row['Nazwa']}")
+    st.write(f"Inwestor: {row['Inwestor']}")
+    if st.button("← Powrót"): st.session_state.selected_project = None; st.rerun()
     
-    st.title(f"Projekt: {row['Nazwa']}")
-    st.markdown(f"Inwestor: **{row['Inwestor']}** | Etap: **{row['Etap']}**")
-    
-    tab1, tab2, tab3 = st.tabs(["📋 Metryka i Zadania", "📝 Dziennik Robót", "⚙️ Ustawienia"])
-    # (Tutaj funkcjonalność pozostaje taka jak wcześniej ustalona)
-    with tab1:
-        c1, c2 = st.columns(2)
-        with c1:
-            st.subheader("📌 Metryka")
-            new_m = st.text_area("Dane umowy:", value=str(row.get('Metryka', "")), height=250)
-            if st.button("Zapisz Metrykę"):
-                df.at[idx, 'Metryka'] = new_m; conn.update(worksheet="Projekty", data=df); st.success("Zapisano")
-        with c2:
-            st.subheader("✅ Zadania")
-            # Logika checkboxów...
-            st.write("Tu pojawią się Twoje checkboxy zadań.")
-
-# --- WIDOK LISTY GŁÓWNEJ ---
+# --- LISTA PROJEKTÓW ---
 else:
-    st.title("🏗️ Aktywne Projekty")
-    st.write("Kliknij w kartę projektu, aby zobaczyć szczegóły.")
-    
-    st.divider()
+    st.markdown("<h1>🏗️ Aktywne Projekty</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='margin-bottom:25px;'>Wybierz projekt z listy, aby zarządzać zadaniami.</p>", unsafe_allow_html=True)
 
     for i, row in df.iterrows():
-        czy_nowy = str(row.get('Ostatnia_Zmiana', "")) > st.session_state.last_login
-        c_class = "project-container new-project" if czy_nowy else "project-container"
-        b_class = get_badge(row['Etap'])
+        # Logika nowości i statusów
+        czy_nowy = str(row.get('Ostatnia_Zmiana', "")) > st.session_state.get('last_login', "")
+        card_style = "project-card is-new" if czy_nowy else "project-card"
         
-        d_i = "📁" if pd.notnull(row.get('Link_Drive')) and "http" in str(row.get('Link_Drive')) else ""
-        m_i = "📍" if pd.notnull(row.get('Link_Mapa')) and "http" in str(row.get('Link_Mapa')) else ""
+        # Dobór koloru badge'a
+        etap = str(row['Etap']).lower()
+        b_style = "b-blue" if "koncepcja" in etap else "b-green" if "wykonawczy" in etap else "b-orange"
 
-        # Główny kontener karty (HTML)
+        # HTML KARTY
         st.markdown(f"""
-            <div class="{c_class}">
-                <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <div style="flex: 4;">
-                        <div class="proj-name">{row['Nazwa']} {d_i}{m_i}</div>
-                        <div class="proj-info">Inwestor: {row['Inwestor']}</div>
+            <div class="project-wrapper">
+                <div class="{card_style}">
+                    <div style="flex: 3;">
+                        <div class="p-title">{row['Nazwa']}</div>
+                        <div class="p-sub">Inwestor: {row['Inwestor']}</div>
                     </div>
                     <div style="flex: 2;">
-                        <div class="proj-label">Prowadzący</div>
-                        <div class="proj-value">{row.get('Pracownik', '-')}</div>
+                        <div class="p-label">Prowadzący</div>
+                        <div class="p-val">{row.get('Pracownik', '-')}</div>
                     </div>
-                    <div style="flex: 1.5; text-align: right;">
-                        <span class="badge {b_class}">{row['Etap']}</span>
+                    <div style="flex: 1; text-align: right;">
+                        <span class="badge {b_style}">{row['Etap']}</span>
                     </div>
                 </div>
             </div>
         """, unsafe_allow_html=True)
-        
-        # Przezroczysty przycisk nałożony na całą kartę
-        if st.button("Otwórz", key=f"pbtn_{i}"):
+
+        # PRZYCISK (Niewidzialny, nałożony na div powyżej)
+        # Dzięki CSS powyżej, ten button wypełni całe project-wrapper
+        if st.button("Open", key=f"p_{i}"):
             st.session_state.selected_project = i
             st.rerun()
